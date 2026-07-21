@@ -1,0 +1,12 @@
+# Whitelist approach: ignore everything except the PWA app files.
+# Personal health data (health_data.json, Daily_Health_Tracking.xlsx,
+# training plans, backups) must never be pushed to this public repo.
+*
+!.gitignore
+!index.html
+!health-pwa.html
+!manifest.json
+!service-worker.js
+!PWA-SETUP.md
+!GITHUB-PAGES-SETUP.md
+!GIT-WORKFLOW.md

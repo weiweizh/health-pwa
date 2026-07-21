@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#263928">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Health Check-in">
+    <meta name="description" content="Daily cycle-synced health tracking and training recommendations">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23263928' width='192' height='192'/><circle cx='96' cy='96' r='60' fill='%23fff'/></svg>">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect fill='%23f4efe8' width='180' height='180'/><circle cx='90' cy='90' r='55' fill='%23263928'/></svg>">
+    <title>Health Check-in</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js" defer></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital@0;1&family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg:          #faf7f0;
+            --surface:     #ffffff;
+            --surface-alt: #f8f5f0;
+            --forest:      #263928;
+            --forest-lt:   #3e5140;
+            --sage:        #7a9978;
+            --sage-pale:   #e8ede7;
+            --rose:        #c47a6e;
+            --gold:        #b89a5c;
+            --text:        #1e2b1f;
+            --text-mute:   #666666;
+            --text-faint:  #999999;
+            --border:      #e8e8e8;
+            --line-soft:   rgba(30, 43, 31, 0.06);
+            --shadow-sm:   0 1px 2px rgba(0,0,0,0.04);
+            --shadow-md:   0 2px 8px rgba(0,0,0,0.08);
+            --shadow-lg:   0 8px 16px rgba(0,0,0,0.12);
+        }
+
+        * { box-sizing: border-box; }
+        html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 16px;
+            line-height: 1.5;
+            color: var(--text);
+            background: var(--bg);
+            overflow-x: hidden;
+        }
+
+        /* Safe area for notch devices */
+        body { padding-top: max(12px, env(safe-area-inset-top)); }
+
+        /* ─────────────────────────────────────
+           HEADER & NAVIGATION
+        ───────────────────────────────────────── */
+        header {
+            background: var(--forest);
+            color: #fff;
+            padding: 20px 16px 24px;
+            text-align: center;
+            box-shadow: var(--shadow-sm);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .header-title {
+            font-family: 'Crimson Text', serif;
+            font-size: 28px;
+            font-weight: 600;
+            margin: 0 0 6px;
+            letter-spacing: -0.3px;
+        }
+
+        .header-date {
+            font-size: 13px;
+            opacity: 0.75;
+            font-weight: 500;
+        }
+
+        nav.tabs {
+            display: flex;
+            gap: 0;
+            background: var(--surface-alt);
+            border-bottom: 1px solid var(--border);
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .tab {
+            flex: 1;
+            min-width: 0;
+            padding: 14px 12px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-mute);
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .tab.active {
+            color: var(--forest);
+            border-bottom-color: var(--forest);
+        }
+
+        /* ─────────────────────────────────────
+           MAIN CONTAINER
+        ───────────────────────────────────────── */
+        .container {
+            max-width: 480px;
+            margin: 0 auto;
+            padding: 16px 12px 40px;
+        }
+
+        /* ─────────────────────────────────────
+           SECTIONS & PANELS
+        ───────────────────────────────────────── */
+        .section {
+            display: none;
+        }
+
+        .section.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: var(--text-mute);
+            margin: 0 0 12px;
+        }
+
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--line-soft);
+        }
+
+        .metric:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+
+        .metric-label {
+            font-size: 14px;
+            color: var(--text-mute);
+            font-weight: 500;
+        }
+
+        .metric-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--forest);
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ─────────────────────────────────────
+           FORM INPUTS
+        ───────────────────────────────────────── */
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: var(--text);
+        }
+
+        input[type="number"],
+        input[type="text"],
+        input[type="date"],
+        textarea {
+            width: 100%;
+            padding: 10px 12px;
+            font-size: 16px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-family: inherit;
+            transition: border-color 0.2s ease;
+        }
+
+        input[type="number"]:focus,
+        input[type="text"]:focus,
+        input[type="date"]:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--forest);
+            box-shadow: 0 0 0 3px rgba(38, 57, 40, 0.1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .form-hint {
+            font-size: 12px;
+            color: var(--text-faint);
+            margin-top: 4px;
+        }
+
+        .input-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        /* ─────────────────────────────────────
+           BUTTONS
+        ───────────────────────────────────────── */
+        button {
+            font-family: inherit;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-radius: 8px;
+            font-weight: 600;
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 14px 16px;
+            background: var(--forest);
+            color: #fff;
+            font-size: 16px;
+            margin-top: 8px;
+        }
+
+        .btn-primary:active {
+            background: var(--forest-lt);
+            transform: scale(0.98);
+        }
+
+        .btn-secondary {
+            padding: 8px 16px;
+            background: var(--surface-alt);
+            color: var(--forest);
+            font-size: 14px;
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:active {
+            background: var(--border);
+        }
+
+        /* ─────────────────────────────────────
+           CHARTS
+        ───────────────────────────────────────── */
+        .chart-container {
+            position: relative;
+            height: 200px;
+            margin-bottom: 16px;
+        }
+
+        .chart-label {
+            font-size: 12px;
+            color: var(--text-faint);
+            margin-top: 8px;
+        }
+
+        /* ─────────────────────────────────────
+           STATS GRID
+        ───────────────────────────────────────── */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .stat-box {
+            background: var(--surface-alt);
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--forest);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-mute);
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-top: 4px;
+            font-weight: 600;
+        }
+
+        /* ─────────────────────────────────────
+           COLLAPSIBLE SECTIONS
+        ───────────────────────────────────────── */
+        .collapsible {
+            background: none;
+            width: 100%;
+            padding: 12px 0;
+            text-align: left;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--forest);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .collapsible::after {
+            content: '▼';
+            font-size: 10px;
+            transition: transform 0.3s ease;
+        }
+
+        .collapsible.open::after {
+            transform: rotate(180deg);
+        }
+
+        .collapsible-content {
+            display: none;
+            padding: 8px 0;
+        }
+
+        .collapsible.open ~ .collapsible-content {
+            display: block;
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                max-height: 0;
+            }
+            to {
+                opacity: 1;
+                max-height: 500px;
+            }
+        }
+
+        /* ─────────────────────────────────────
+           FOOTER
+        ───────────────────────────────────────── */
+        footer {
+            text-align: center;
+            font-size: 12px;
+            color: var(--text-faint);
+            padding: 20px 16px;
+            border-top: 1px solid var(--border);
+            margin-top: 40px;
+        }
+
+        /* ─────────────────────────────────────
+           RESPONSIVE
+        ───────────────────────────────────────── */
+        @media (min-width: 600px) {
+            .container {
+                padding: 24px 16px 60px;
+            }
+
+            .card {
+                padding: 20px;
+                margin-bottom: 16px;
+                border-radius: 14px;
+            }
+
+            .input-row {
+                grid-template-columns: 1fr 1fr 1fr;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+
+            .chart-container {
+                height: 240px;
+            }
+        }
+
+        /* ─────────────────────────────────────
+           UTILITY CLASSES
+        ───────────────────────────────────────── */
+        .hidden {
+            display: none !important;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .text-mute {
+            color: var(--text-mute);
+        }
+
+        .mt-2 { margin-top: 16px; }
+        .mb-2 { margin-bottom: 16px; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1 class="header-title">Health Check-in</h1>
+        <div class="header-date" id="todayDate"></div>
+    </header>
+
+    <nav class="tabs">
+        <button class="tab active" data-tab="home">Today</button>
+        <button class="tab" data-tab="log">Log</button>
+        <button class="tab" data-tab="trends">Trends</button>
+    </nav>
+
+    <div class="container">
+        <!-- HOME TAB -->
+        <section id="home" class="section active">
+            <div class="card">
+                <div class="card-title">Today's Summary</div>
+                <div id="todaySummary" class="text-mute">
+                    <p>No entry yet for today. <a href="#" onclick="switchTab('log'); return false;">Add your metrics</a>.</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">This Week's Metrics</div>
+                <div class="stats-grid" id="weekStatsGrid">
+                    <div class="stat-box">
+                        <div class="stat-value" id="avgHR">—</div>
+                        <div class="stat-label">Avg HR</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="avgSleep">—</div>
+                        <div class="stat-label">Avg Sleep</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="avgHRV">—</div>
+                        <div class="stat-label">Avg HRV</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="workoutCount">0</div>
+                        <div class="stat-label">Workouts</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- LOG TAB -->
+        <section id="log" class="section">
+            <div class="card">
+                <h2 class="card-title">Daily Metrics</h2>
+                <form id="logForm">
+                    <div class="form-group">
+                        <label>Daily Heart Rate (bpm)</label>
+                        <input type="number" id="heartRate" inputmode="decimal" placeholder="e.g., 60">
+                        <div class="form-hint">Resting heart rate</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Sleep</label>
+                        <div class="input-row">
+                            <div>
+                                <input type="number" id="sleepHours" inputmode="decimal" placeholder="Hours" min="0" max="12" step="0.25">
+                            </div>
+                            <div>
+                                <input type="number" id="sleepQuality" inputmode="numeric" placeholder="Quality %" min="0" max="100">
+                            </div>
+                            <div>
+                                <input type="number" id="sleepHR" inputmode="decimal" placeholder="Sleep HR">
+                            </div>
+                        </div>
+                        <div class="form-hint">Duration (hrs) · Quality (%) · Sleep HR (bpm)</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Overnight HRV (ms)</label>
+                        <input type="number" id="hrv" inputmode="numeric" placeholder="e.g., 45">
+                    </div>
+
+                    <div class="form-group">
+                        <label>How are you feeling?</label>
+                        <textarea id="feeling" placeholder="e.g., Good energy, slight soreness"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Wellbeing (0–10)</label>
+                        <div class="input-row">
+                            <div>
+                                <input type="number" id="physicalFeel" inputmode="numeric" placeholder="Physical" min="0" max="10">
+                            </div>
+                            <div>
+                                <input type="number" id="mentalFeel" inputmode="numeric" placeholder="Mental" min="0" max="10">
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="button" class="collapsible">➕ Workout Details</button>
+                    <div class="collapsible-content">
+                        <div class="form-group">
+                            <label>Type</label>
+                            <input type="text" id="workoutType" placeholder="e.g., Easy Run, Strength">
+                        </div>
+                        <div class="form-group">
+                            <label>Duration (min)</label>
+                            <input type="number" id="workoutDuration" inputmode="numeric" placeholder="e.g., 40">
+                        </div>
+                        <div class="form-group">
+                            <label>Intensity</label>
+                            <input type="text" id="workoutIntensity" placeholder="e.g., Zone 2, easy">
+                        </div>
+                        <div class="form-group">
+                            <label>Distance / Calories</label>
+                            <input type="text" id="workoutDistance" placeholder="e.g., 5.2 km">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Cycle Day</label>
+                        <div class="input-row">
+                            <input type="number" id="cycleDay" inputmode="numeric" placeholder="Day" min="1" max="50">
+                            <input type="number" id="cycleLength" inputmode="numeric" placeholder="Cycle length" min="20" max="60">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Recovery Notes</label>
+                        <textarea id="recovery" placeholder="How recovered do you feel?"></textarea>
+                    </div>
+
+                    <button type="submit" class="btn-primary">Save Entry</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- TRENDS TAB -->
+        <section id="trends" class="section">
+            <div class="card">
+                <div class="card-title">Heart Rate Trend</div>
+                <div class="chart-container">
+                    <canvas id="hrChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Sleep Trend</div>
+                <div class="chart-container">
+                    <canvas id="sleepChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">HRV & Recovery</div>
+                <div class="chart-container">
+                    <canvas id="hrvChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Wellbeing</div>
+                <div class="chart-container">
+                    <canvas id="wellbeingChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card" id="entriesCard">
+                <button class="collapsible" id="entriesBtn">📋 All Entries <span id="entriesCount" style="font-weight: 400; font-size: 12px; margin-left: 8px;"></span></button>
+                <div class="collapsible-content">
+                    <div id="entriesList" style="overflow-x: auto; font-size: 13px;"></div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <footer>
+        <p>Cycle-synced health tracking • <span id="buildDate"></span></p>
+    </footer>
+
+    <script>
+        // ═══════════════════════════════════════════════════════════
+        // PWA REGISTRATION
+        // ═══════════════════════════════════════════════════════════
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('service-worker.js')
+                .then(reg => console.log('SW registered'))
+                .catch(err => console.log('SW registration failed:', err));
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // STATE & INITIALIZATION
+        // ═══════════════════════════════════════════════════════════
+        let allHealthData = [];
+        let charts = {
+            hr: null,
+            sleep: null,
+            hrv: null,
+            wellbeing: null
+        };
+
+        // Update date display
+        function updateDateDisplay() {
+            const today = new Date();
+            const dateStr = today.toLocaleDateString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric'
+            });
+            document.getElementById('todayDate').textContent = dateStr;
+            document.getElementById('buildDate').textContent = today.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // LOCAL STORAGE HELPERS
+        // ═══════════════════════════════════════════════════════════
+        function loadAllData() {
+            const stored = localStorage.getItem('healthHistory') || '[]';
+            allHealthData = JSON.parse(stored);
+            return allHealthData;
+        }
+
+        function saveEntry(data) {
+            loadAllData();
+            const idx = allHealthData.findIndex(h => h.date === data.date);
+            if (idx >= 0) {
+                allHealthData[idx] = data;
+            } else {
+                allHealthData.push(data);
+            }
+            allHealthData.sort((a, b) => new Date(a.date) - new Date(b.date));
+            localStorage.setItem('healthHistory', JSON.stringify(allHealthData));
+        }
+
+        function getTodayEntry() {
+            const today = new Date().toISOString().split('T')[0];
+            return allHealthData.find(h => h.date === today);
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // TAB NAVIGATION
+        // ═══════════════════════════════════════════════════════════
+        function switchTab(tabName) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+
+            document.getElementById(tabName).classList.add('active');
+            document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+
+            if (tabName === 'trends') {
+                setTimeout(renderCharts, 100);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // TAB BUTTONS
+        // ═══════════════════════════════════════════════════════════
+        document.querySelectorAll('.tab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                switchTab(btn.dataset.tab);
+            });
+        });
+
+        // ═══════════════════════════════════════════════════════════
+        // COLLAPSIBLE TOGGLE
+        // ═══════════════════════════════════════════════════════════
+        document.querySelectorAll('.collapsible').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                btn.classList.toggle('open');
+            });
+        });
+
+        // ═══════════════════════════════════════════════════════════
+        // FORM SUBMISSION
+        // ═══════════════════════════════════════════════════════════
+        document.getElementById('logForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            const today = new Date().toISOString().split('T')[0];
+            const entry = {
+                date: today,
+                heartRate: document.getElementById('heartRate').value || null,
+                sleepDuration: document.getElementById('sleepHours').value || null,
+                sleepQuality: document.getElementById('sleepQuality').value || null,
+                sleepHR: document.getElementById('sleepHR').value || null,
+                hrv: document.getElementById('hrv').value || null,
+                feeling: document.getElementById('feeling').value || null,
+                physicalFeel: document.getElementById('physicalFeel').value || null,
+                mentalFeel: document.getElementById('mentalFeel').value || null,
+                workoutType: document.getElementById('workoutType').value || null,
+                workoutDuration: document.getElementById('workoutDuration').value || null,
+                workoutIntensity: document.getElementById('workoutIntensity').value || null,
+                workoutDistance: document.getElementById('workoutDistance').value || null,
+                cycleDay: document.getElementById('cycleDay').value || null,
+                cycleLength: document.getElementById('cycleLength').value || null,
+                recovery: document.getElementById('recovery').value || null,
+            };
+
+            saveEntry(entry);
+            document.getElementById('logForm').reset();
+
+            alert('✓ Entry saved!');
+            switchTab('home');
+            updateHomeView();
+        });
+
+        // ═══════════════════════════════════════════════════════════
+        // HOME VIEW
+        // ═══════════════════════════════════════════════════════════
+        function updateHomeView() {
+            const today = getTodayEntry();
+            const summaryEl = document.getElementById('todaySummary');
+
+            if (!today) {
+                summaryEl.innerHTML = '<p style="color: var(--text-mute);">No entry yet for today. <a href="#" onclick="switchTab(\'log\'); return false;">Add your metrics</a>.</p>';
+            } else {
+                let html = '<div class="metric">';
+                if (today.heartRate) html += `<span class="metric-label">HR</span><span class="metric-value">${today.heartRate} bpm</span></div><div class="metric">`;
+                if (today.sleepDuration) {
+                    const h = Math.floor(today.sleepDuration);
+                    const m = Math.round((today.sleepDuration - h) * 60);
+                    html += `<span class="metric-label">Sleep</span><span class="metric-value">${h}h${m > 0 ? m + 'm' : ''}</span></div><div class="metric">`;
+                }
+                if (today.hrv) html += `<span class="metric-label">HRV</span><span class="metric-value">${today.hrv} ms</span></div><div class="metric">`;
+                if (today.feeling) html += `<span class="metric-label">Feeling</span><span class="metric-value" style="font-size: 14px; text-align: right; flex: 1; margin-left: 16px;">${today.feeling}</span></div><div class="metric">`;
+                if (today.cycleDay) html += `<span class="metric-label">Cycle</span><span class="metric-value">Day ${today.cycleDay}</span></div>`;
+                html += '</div>';
+                summaryEl.innerHTML = html;
+            }
+
+            updateWeekStats();
+        }
+
+        function updateWeekStats() {
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            const weekData = allHealthData.filter(h => new Date(h.date) >= weekAgo);
+
+            const hrs = weekData.map(h => h.heartRate ? parseInt(h.heartRate) : null).filter(v => v);
+            const sleeps = weekData.map(h => h.sleepDuration ? parseFloat(h.sleepDuration) : null).filter(v => v);
+            const hrvs = weekData.map(h => h.hrv ? parseInt(h.hrv) : null).filter(v => v);
+            const workouts = weekData.filter(h => h.workoutType || h.workoutDuration).length;
+
+            document.getElementById('avgHR').textContent = hrs.length ? Math.round(hrs.reduce((a, b) => a + b) / hrs.length) + '' : '—';
+            document.getElementById('avgSleep').textContent = sleeps.length ? (sleeps.reduce((a, b) => a + b) / sleeps.length).toFixed(1) + 'h' : '—';
+            document.getElementById('avgHRV').textContent = hrvs.length ? Math.round(hrvs.reduce((a, b) => a + b) / hrvs.length) + '' : '—';
+            document.getElementById('workoutCount').textContent = workouts;
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // CHARTS
+        // ═══════════════════════════════════════════════════════════
+        function renderCharts() {
+            if (!allHealthData.length) {
+                document.getElementById('hrChart').parentElement.innerHTML = '<p style="color: var(--text-mute); text-align: center; padding: 40px 0;">Add entries to see trends</p>';
+                return;
+            }
+
+            const dates = allHealthData.map(h => {
+                const d = new Date(h.date);
+                return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            });
+
+            const chartOpts = {
+                responsive: true,
+                maintainAspectRatio: false,
+                spanGaps: true,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false, position: 'bottom' },
+                    tooltip: {
+                        backgroundColor: 'rgba(30, 43, 31, 0.9)',
+                        padding: 8,
+                        cornerRadius: 6,
+                        bodyFont: { size: 12 },
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { drawBorder: false, color: 'rgba(0,0,0,0.05)' },
+                        ticks: { font: { size: 11 } }
+                    },
+                    y: {
+                        grid: { color: 'rgba(0,0,0,0.05)' },
+                        ticks: { font: { size: 10 } }
+                    }
+                }
+            };
+
+            // HR Chart
+            if (charts.hr) charts.hr.destroy();
+            charts.hr = new Chart(document.getElementById('hrChart'), {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Heart Rate',
+                        data: allHealthData.map(h => h.heartRate ? parseInt(h.heartRate) : null),
+                        borderColor: '#263928',
+                        backgroundColor: 'rgba(38, 57, 40, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#263928'
+                    }]
+                },
+                options: chartOpts
+            });
+
+            // Sleep Chart
+            if (charts.sleep) charts.sleep.destroy();
+            charts.sleep = new Chart(document.getElementById('sleepChart'), {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Sleep (hrs)',
+                        data: allHealthData.map(h => h.sleepDuration ? parseFloat(h.sleepDuration) : null),
+                        borderColor: '#7a9978',
+                        backgroundColor: 'rgba(122, 153, 120, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#7a9978'
+                    }]
+                },
+                options: chartOpts
+            });
+
+            // HRV Chart
+            if (charts.hrv) charts.hrv.destroy();
+            charts.hrv = new Chart(document.getElementById('hrvChart'), {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'HRV (ms)',
+                        data: allHealthData.map(h => h.hrv ? parseInt(h.hrv) : null),
+                        borderColor: '#c47a6e',
+                        backgroundColor: 'rgba(196, 122, 110, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#c47a6e'
+                    }]
+                },
+                options: chartOpts
+            });
+
+            // Wellbeing Chart
+            if (charts.wellbeing) charts.wellbeing.destroy();
+            charts.wellbeing = new Chart(document.getElementById('wellbeingChart'), {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [
+                        {
+                            label: 'Physical',
+                            data: allHealthData.map(h => h.physicalFeel ? parseInt(h.physicalFeel) : null),
+                            borderColor: '#b89a5c',
+                            tension: 0.4,
+                            fill: false,
+                            pointRadius: 3,
+                            pointBackgroundColor: '#b89a5c'
+                        },
+                        {
+                            label: 'Mental',
+                            data: allHealthData.map(h => h.mentalFeel ? parseInt(h.mentalFeel) : null),
+                            borderColor: '#c47a6e',
+                            tension: 0.4,
+                            fill: false,
+                            pointRadius: 3,
+                            pointBackgroundColor: '#c47a6e'
+                        }
+                    ]
+                },
+                options: {
+                    ...chartOpts,
+                    plugins: {
+                        ...chartOpts.plugins,
+                        legend: { display: true, position: 'bottom' }
+                    },
+                    scales: {
+                        ...chartOpts.scales,
+                        y: {
+                            ...chartOpts.scales.y,
+                            min: 0,
+                            max: 10
+                        }
+                    }
+                }
+            });
+
+            renderEntriesTable();
+        }
+
+        function renderEntriesTable() {
+            const list = document.getElementById('entriesList');
+            const count = allHealthData.length;
+            document.getElementById('entriesCount').textContent = `(${count})`;
+
+            if (!count) {
+                list.innerHTML = '<p style="color: var(--text-mute);">No entries yet.</p>';
+                return;
+            }
+
+            let html = '<table style="width: 100%; border-collapse: collapse; font-size: 12px;"><thead><tr style="border-bottom: 2px solid var(--border);"><th style="padding: 8px; text-align: left; font-weight: 600;">Date</th><th style="padding: 8px; text-align: left;">HR</th><th style="padding: 8px; text-align: left;">Sleep</th><th style="padding: 8px; text-align: left;">HRV</th><th style="padding: 8px; text-align: left;">Workout</th></tr></thead><tbody>';
+
+            allHealthData.slice().reverse().forEach(entry => {
+                const date = new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                const hr = entry.heartRate ? entry.heartRate + ' bpm' : '—';
+                const sleep = entry.sleepDuration ? parseFloat(entry.sleepDuration).toFixed(1) + 'h' : '—';
+                const hrv = entry.hrv ? entry.hrv + ' ms' : '—';
+                const workout = entry.workoutType ? entry.workoutType : '—';
+
+                html += `<tr style="border-bottom: 1px solid var(--line-soft);"><td style="padding: 8px;">${date}</td><td style="padding: 8px;">${hr}</td><td style="padding: 8px;">${sleep}</td><td style="padding: 8px;">${hrv}</td><td style="padding: 8px;">${workout}</td></tr>`;
+            });
+
+            html += '</tbody></table>';
+            list.innerHTML = html;
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // INITIALIZATION
+        // ═══════════════════════════════════════════════════════════
+        window.addEventListener('DOMContentLoaded', () => {
+            updateDateDisplay();
+            loadAllData();
+            updateHomeView();
+        });
+    </script>
+</body>
+</html>
