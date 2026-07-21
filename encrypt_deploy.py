@@ -176,6 +176,17 @@ UNLOCK_SCRIPT = """
     }
 })();
 if ('serviceWorker' in navigator) {
+    // When a newly deployed service worker replaces an already-active one, reload
+    // once so the user immediately sees the fresh app instead of the stale cached
+    // copy. Skipped on first-ever install (no prior controller), which also fires
+    // controllerchange but shouldn't trigger a reload.
+    var hadController = !!navigator.serviceWorker.controller;
+    var swRefreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (swRefreshing || !hadController) return;
+        swRefreshing = true;
+        window.location.reload();
+    });
     navigator.serviceWorker.register('service-worker.js').catch(function () {});
 }
 </script>

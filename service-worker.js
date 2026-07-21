@@ -1,102 +1,78 @@
 // Service Worker for Health Check-in PWA
-const CACHE_NAME = 'health-pwa-v2';
+const CACHE_NAME = 'health-pwa-v3';
 const urlsToCache = [
     'index.html',
     'manifest.json',
     '/'
 ];
 
-// Install event - cache essential files
+// Install — pre-cache essentials, then take over immediately.
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
-            // Try to cache files, but don't fail if some are missing
             return Promise.allSettled(
-                urlsToCache.map(url => {
-                    return cache.add(url).catch(() => {
-                        // Silently ignore failed cache attempts
-                    });
-                })
+                urlsToCache.map((url) => cache.add(url).catch(() => {}))
             );
         })
     );
     self.skipWaiting();
 });
 
-// Activate event - clean up old caches
+// Activate — delete old caches so a new deploy replaces the stale HTML.
 self.addEventListener('activate', (event) => {
     event.waitUntil(
-        caches.keys().then((cacheNames) => {
-            return Promise.all(
-                cacheNames.map((cacheName) => {
-                    if (cacheName !== CACHE_NAME) {
-                        return caches.delete(cacheName);
-                    }
-                })
-            );
-        })
+        caches.keys().then((names) => Promise.all(
+            names.map((name) => name !== CACHE_NAME ? caches.delete(name) : null)
+        ))
     );
     self.clients.claim();
 });
 
-// Fetch event - network first with cache fallback
+function networkFirst(request) {
+    return fetch(request)
+        .then((response) => {
+            if (response && response.ok) {
+                const copy = response.clone();
+                caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+            }
+            return response;
+        })
+        .catch(() => caches.match(request));
+}
+
+function cacheFirst(request) {
+    return caches.match(request).then((cached) => {
+        return cached || fetch(request).then((response) => {
+            if (response && response.ok) {
+                const copy = response.clone();
+                caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+            }
+            return response;
+        }).catch(() => cached);
+    });
+}
+
+// Fetch strategy:
+//  - HTML documents (the app itself): NETWORK FIRST, so a new deploy is picked
+//    up as soon as the device is online, with the cached copy as offline fallback.
+//    (Cache-first here is what pinned users to a stale index.html.)
+//  - CDN assets (Chart.js, fonts): network first, cache fallback.
+//  - Other local assets (manifest, etc.): cache first for speed.
 self.addEventListener('fetch', (event) => {
-    // Skip non-GET requests
-    if (event.request.method !== 'GET') {
-        return;
-    }
+    if (event.request.method !== 'GET') return;
 
-    // For CDN resources (Chart.js, fonts, etc.), use network first
-    if (event.request.url.includes('cdn.') ||
-        event.request.url.includes('fonts.googleapis') ||
-        event.request.url.includes('fonts.gstatic')) {
-        event.respondWith(
-            fetch(event.request)
-                .then((response) => {
-                    // Clone the response and cache it
-                    if (response.ok) {
-                        const cacheResponse = response.clone();
-                        caches.open(CACHE_NAME).then((cache) => {
-                            cache.put(event.request, cacheResponse);
-                        });
-                    }
-                    return response;
-                })
-                .catch(() => {
-                    // Fall back to cache if network fails
-                    return caches.match(event.request);
-                })
-        );
+    const url = event.request.url;
+    const isHTML = event.request.mode === 'navigate' ||
+                   url.endsWith('.html') ||
+                   url.endsWith('/');
+
+    if (isHTML) {
+        event.respondWith(networkFirst(event.request));
+    } else if (url.includes('cdn.') ||
+               url.includes('fonts.googleapis') ||
+               url.includes('fonts.gstatic')) {
+        event.respondWith(networkFirst(event.request));
     } else {
-        // For local resources, use cache first with network fallback
-        event.respondWith(
-            caches.match(event.request).then((response) => {
-                return response || fetch(event.request)
-                    .then((response) => {
-                        // Cache successful responses
-                        if (response.ok) {
-                            const cacheResponse = response.clone();
-                            caches.open(CACHE_NAME).then((cache) => {
-                                cache.put(event.request, cacheResponse);
-                            });
-                        }
-                        return response;
-                    })
-                    .catch(() => {
-                        // Return cached response if fetch fails
-                        return caches.match(event.request);
-                    });
-            })
-        );
-    }
-});
-
-// Background sync for future use (optional)
-self.addEventListener('sync', (event) => {
-    if (event.tag === 'sync-health-data') {
-        event.waitUntil(
-            // Implement data sync if needed
-            Promise.resolve()
-        );
+        event.respondWith(cacheFirst(event.request));
     }
 });
