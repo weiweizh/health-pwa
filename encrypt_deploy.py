@@ -97,9 +97,15 @@ UNLOCK_SCRIPT = """
             'width:100%;text-align:center;font-family:Georgia,serif;color:#263928;box-shadow:0 20px 60px rgba(0,0,0,0.4);}' +
             '#unlock-overlay h2{margin:0 0 8px;font-size:26px;font-weight:normal;}' +
             '#unlock-overlay p{margin:0 0 20px;font-size:14px;opacity:0.75;line-height:1.5;}' +
-            '#unlock-overlay input{width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;' +
+            '#unlock-overlay input{width:100%;box-sizing:border-box;padding:12px 44px 12px 14px;font-size:16px;' +
             'border:1.5px solid #c9c2b2;border-radius:10px;background:#fff;color:#263928;outline:none;}' +
             '#unlock-overlay input:focus{border-color:#263928;}' +
+            '#unlock-overlay .pass-wrap{position:relative;}' +
+            '#unlock-overlay .eye-btn{position:absolute;top:0;right:0;height:100%;width:44px;margin:0;padding:0;' +
+            'display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;' +
+            'color:#263928;opacity:0.55;}' +
+            '#unlock-overlay .eye-btn:hover{opacity:0.85;}' +
+            '#unlock-overlay .eye-btn svg{width:20px;height:20px;display:block;}' +
             '#unlock-overlay button{margin-top:14px;width:100%;padding:12px;font-size:16px;border:none;' +
             'border-radius:10px;background:#263928;color:#faf7f0;cursor:pointer;font-family:inherit;}' +
             '#unlock-overlay .err{color:#a04040;font-size:13px;min-height:18px;margin-top:10px;}' +
@@ -109,7 +115,10 @@ UNLOCK_SCRIPT = """
             '<div class="card">' +
             '<h2>Health Check-in</h2>' +
             '<p>Your health data is encrypted.<br>Enter your passphrase to unlock it on this device.</p>' +
+            '<div class="pass-wrap">' +
             '<input type="password" id="unlock-pass" placeholder="Passphrase" autocomplete="off">' +
+            '<button type="button" class="eye-btn" id="unlock-eye" aria-label="Show passphrase" aria-pressed="false"></button>' +
+            '</div>' +
             '<button id="unlock-btn">Unlock</button>' +
             '<div class="err" id="unlock-err"></div>' +
             '<button class="skip" id="unlock-skip">Continue without my data</button>' +
@@ -117,6 +126,25 @@ UNLOCK_SCRIPT = """
         document.body.appendChild(wrap);
         var input = document.getElementById('unlock-pass');
         var err = document.getElementById('unlock-err');
+
+        var eye = document.getElementById('unlock-eye');
+        var EYE_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" '
+            + 'stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>'
+            + '<circle cx="12" cy="12" r="3"/></svg>';
+        var EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" '
+            + 'stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20'
+            + 'c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8'
+            + 'a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+        eye.innerHTML = EYE_OPEN;
+        eye.addEventListener('click', function () {
+            var show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            eye.innerHTML = show ? EYE_OFF : EYE_OPEN;
+            eye.setAttribute('aria-pressed', show ? 'true' : 'false');
+            eye.setAttribute('aria-label', show ? 'Hide passphrase' : 'Show passphrase');
+            input.focus();
+        });
+
         function attempt() {
             var val = input.value.trim();
             if (!val) return;
