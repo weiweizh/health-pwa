@@ -1,12 +1,18 @@
-# Whitelist approach: ignore everything except the PWA app files.
-# Personal health data (health_data.json, Daily_Health_Tracking.xlsx,
-# training plans, backups) must never be pushed to this public repo.
+# Whitelist approach: ignore everything, then allow only the files that are
+# safe to publish. Personal health data must never reach this public repo.
+#
+# NEVER committed (stay ignored): daily_health_checkin.html (plaintext source),
+# health_data.json, Daily_Health_Tracking.xlsx, training plans, *.bak backups,
+# and .deploy-passphrase (the decryption key).
+#
+# index.html is SAFE to publish: its health entries are encrypted with
+# AES-256-GCM and cannot be read without the passphrase.
 *
 !.gitignore
 !index.html
-!health-pwa.html
 !manifest.json
 !service-worker.js
+!encrypt_deploy.py
 !PWA-SETUP.md
 !GITHUB-PAGES-SETUP.md
 !GIT-WORKFLOW.md

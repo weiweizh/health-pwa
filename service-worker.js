@@ -1,7 +1,7 @@
 // Service Worker for Health Check-in PWA
-const CACHE_NAME = 'health-pwa-v1';
+const CACHE_NAME = 'health-pwa-v2';
 const urlsToCache = [
-    'health-pwa.html',
+    'index.html',
     'manifest.json',
     '/'
 ];

@@ -3,7 +3,7 @@
   "short_name": "Health",
   "description": "Cycle-synced health tracking and training recommendations",
   "scope": "/",
-  "start_url": "health-pwa.html",
+  "start_url": "index.html",
   "display": "standalone",
   "orientation": "portrait-primary",
   "theme_color": "#263928",
@@ -36,7 +36,7 @@
       "name": "Log Entry",
       "short_name": "Log",
       "description": "Log today's health metrics",
-      "url": "health-pwa.html?tab=log",
+      "url": "index.html?tab=log",
       "icons": [
         {
           "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><rect fill='%237a9978' width='96' height='96'/><text x='48' y='55' font-size='50' text-anchor='middle' fill='white'>+</text></svg>",
