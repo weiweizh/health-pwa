@@ -250,13 +250,28 @@ SYNC_SCRIPT = """
             var content = utf8ToB64(JSON.stringify(blob));
             var url = 'https://api.github.com/repos/' + REPO + '/contents/' + ENC_PATH;
 
-            function attemptPush(sha) {
+            function attemptPush(sha, retries) {
+                retries = retries || 0;
                 var body = { message: 'Update health data ' + new Date().toISOString(),
                              content: content, branch: BRANCH };
                 if (sha) body.sha = sha;
                 return fetch(url, { method: 'PUT', headers: ghHeaders(token), body: JSON.stringify(body) })
                     .then(function (r) {
-                        if (!r.ok) return r.json().then(function (e) { throw new Error(e.message || ('HTTP ' + r.status)); });
+                        if (!r.ok) return r.json().then(function (e) {
+                            var msg = e.message || ('HTTP ' + r.status);
+                            if ((msg.indexOf('sha') > -1 || msg.indexOf('does not match') > -1) && retries < 2) {
+                                return new Promise(function(resolve) {
+                                    setTimeout(function() {
+                                        fetch(url + '?ref=' + BRANCH, { headers: ghHeaders(token) })
+                                            .then(function (r2) {
+                                                return r2.status === 200 ? r2.json().then(function (j) { return j.sha; }) : null;
+                                            })
+                                            .then(function (newSha) { resolve(attemptPush(newSha, retries + 1)); });
+                                    }, 300);
+                                });
+                            }
+                            throw new Error(msg);
+                        });
                         return r.json();
                     });
             }
@@ -265,11 +280,7 @@ SYNC_SCRIPT = """
                 .then(function (r) {
                     return r.status === 200 ? r.json().then(function (j) { return j.sha; }) : null;
                 })
-                .then(function (sha) { return attemptPush(sha); })
-                .catch(function (e) {
-                    if (e.message && e.message.indexOf('sha') > -1) return attemptPush(null);
-                    throw e;
-                });
+                .then(function (sha) { return attemptPush(sha); });
         });
     }
 
