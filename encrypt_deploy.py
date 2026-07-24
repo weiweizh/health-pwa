@@ -193,6 +193,181 @@ if ('serviceWorker' in navigator) {
 """
 
 
+# Injected sync module: encrypts the dataset with the user's passphrase and pushes
+# it to GitHub (data branch) so the Mac can pull it into the Excel file. The GitHub
+# token is entered by the user on their device and stored only in localStorage.
+SYNC_SCRIPT = """
+<script>
+(function () {
+    'use strict';
+    var REPO = 'weiweizh/health-pwa';
+    var ENC_PATH = 'health_data.enc';
+    var BRANCH = 'data';
+    var ITER = 310000;
+
+    function bytesToB64(bytes) {
+        var bin = '';
+        for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        return btoa(bin);
+    }
+    function utf8ToB64(str) { return bytesToB64(new TextEncoder().encode(str)); }
+    function getPass() { try { return localStorage.getItem('healthDataPass') || ''; } catch (e) { return ''; } }
+    function getToken() { try { return localStorage.getItem('githubSyncToken') || ''; } catch (e) { return ''; } }
+    function setToken(t) {
+        try { t ? localStorage.setItem('githubSyncToken', t) : localStorage.removeItem('githubSyncToken'); } catch (e) {}
+    }
+    function getEntries() { try { return JSON.parse(localStorage.getItem('healthHistory') || '[]'); } catch (e) { return []; } }
+
+    function encryptEntries(entries, pass) {
+        var salt = crypto.getRandomValues(new Uint8Array(16));
+        var iv = crypto.getRandomValues(new Uint8Array(12));
+        return crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey'])
+            .then(function (km) {
+                return crypto.subtle.deriveKey(
+                    { name: 'PBKDF2', salt: salt, iterations: ITER, hash: 'SHA-256' },
+                    km, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+            })
+            .then(function (key) {
+                return crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key,
+                    new TextEncoder().encode(JSON.stringify(entries)));
+            })
+            .then(function (ct) {
+                return { v: 1, iter: ITER, salt: bytesToB64(salt), iv: bytesToB64(iv),
+                         data: bytesToB64(new Uint8Array(ct)) };
+            });
+    }
+
+    function ghHeaders(token) {
+        return { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github+json',
+                 'X-GitHub-Api-Version': '2022-11-28' };
+    }
+
+    function push() {
+        var token = getToken(), pass = getPass();
+        if (!token) return Promise.reject(new Error('Add your GitHub token in Sync settings first.'));
+        if (!pass) return Promise.reject(new Error('Unlock with your passphrase first.'));
+        return encryptEntries(getEntries(), pass).then(function (blob) {
+            var content = utf8ToB64(JSON.stringify(blob));
+            var url = 'https://api.github.com/repos/' + REPO + '/contents/' + ENC_PATH;
+            return fetch(url + '?ref=' + BRANCH, { headers: ghHeaders(token) })
+                .then(function (r) { return r.status === 200 ? r.json().then(function (j) { return j.sha; }) : null; })
+                .then(function (sha) {
+                    var body = { message: 'Update health data ' + new Date().toISOString(),
+                                 content: content, branch: BRANCH };
+                    if (sha) body.sha = sha;
+                    return fetch(url, { method: 'PUT', headers: ghHeaders(token), body: JSON.stringify(body) });
+                })
+                .then(function (r) {
+                    if (!r.ok) return r.json().then(function (e) { throw new Error(e.message || ('HTTP ' + r.status)); });
+                    return r.json();
+                });
+        });
+    }
+
+    window.HealthSync = { push: push, getToken: getToken, setToken: setToken, encryptEntries: encryptEntries, getEntries: getEntries };
+
+    function toast(msg) {
+        var t = document.createElement('div');
+        t.textContent = msg;
+        t.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:100000;' +
+            'background:#263928;color:#faf7f0;padding:10px 18px;border-radius:20px;font-family:Georgia,serif;' +
+            'font-size:14px;box-shadow:0 6px 20px rgba(0,0,0,0.3);max-width:80%;text-align:center;';
+        document.body.appendChild(t);
+        setTimeout(function () { t.style.transition = 'opacity 0.4s'; t.style.opacity = '0';
+            setTimeout(function () { t.remove(); }, 400); }, 2600);
+    }
+
+    function openSettings() {
+        var hasToken = !!getToken();
+        var wrap = document.createElement('div');
+        wrap.id = 'sync-settings';
+        wrap.innerHTML =
+            '<style>' +
+            '#sync-settings{position:fixed;inset:0;z-index:100001;background:rgba(38,57,40,0.9);' +
+            'display:flex;align-items:center;justify-content:center;padding:24px;}' +
+            '#sync-settings .card{background:#faf7f0;border-radius:18px;padding:28px 26px;max-width:380px;width:100%;' +
+            'font-family:Georgia,serif;color:#263928;box-shadow:0 20px 60px rgba(0,0,0,0.4);}' +
+            '#sync-settings h2{margin:0 0 6px;font-size:22px;font-weight:normal;}' +
+            '#sync-settings p{margin:0 0 16px;font-size:13px;opacity:0.75;line-height:1.5;}' +
+            '#sync-settings input{width:100%;box-sizing:border-box;padding:11px 12px;font-size:15px;' +
+            'border:1.5px solid #c9c2b2;border-radius:9px;background:#fff;color:#263928;outline:none;}' +
+            '#sync-settings .row{display:flex;gap:8px;margin-top:12px;}' +
+            '#sync-settings button{flex:1;padding:11px;font-size:14px;border:none;border-radius:9px;' +
+            'font-family:inherit;cursor:pointer;}' +
+            '#sync-settings .primary{background:#263928;color:#faf7f0;}' +
+            '#sync-settings .ghost{background:#efe9dd;color:#263928;}' +
+            '#sync-settings .status{margin-top:12px;font-size:12px;min-height:16px;text-align:center;}' +
+            '#sync-settings .close{display:block;margin:16px auto 0;background:none;border:none;font-size:13px;' +
+            'color:#263928;opacity:0.6;text-decoration:underline;cursor:pointer;width:auto;}' +
+            '</style>' +
+            '<div class="card">' +
+            '<h2>Sync to GitHub</h2>' +
+            '<p>Paste a GitHub token with write access to the health-pwa repo. It is stored only on this ' +
+            'device and used to save your (encrypted) data so your Mac can pull it. ' +
+            (hasToken ? 'A token is currently saved.' : 'No token saved yet.') + '</p>' +
+            '<input type="password" id="sync-token" placeholder="ghp_... or github_pat_..." autocomplete="off">' +
+            '<div class="row"><button class="primary" id="sync-save">Save token</button>' +
+            '<button class="ghost" id="sync-now">Sync now</button></div>' +
+            '<div class="status" id="sync-status"></div>' +
+            (hasToken ? '<button class="close" id="sync-clear">Remove saved token</button>' : '') +
+            '<button class="close" id="sync-close">Close</button>' +
+            '</div>';
+        document.body.appendChild(wrap);
+        var status = document.getElementById('sync-status');
+        document.getElementById('sync-save').addEventListener('click', function () {
+            var v = document.getElementById('sync-token').value.trim();
+            if (!v) { status.textContent = 'Enter a token first.'; return; }
+            setToken(v); status.textContent = 'Token saved on this device.';
+        });
+        document.getElementById('sync-now').addEventListener('click', function () {
+            var v = document.getElementById('sync-token').value.trim();
+            if (v) setToken(v);
+            status.textContent = 'Syncing...';
+            push().then(function () { status.textContent = 'Synced to GitHub.'; })
+                   .catch(function (e) { status.textContent = 'Failed: ' + e.message; });
+        });
+        var clr = document.getElementById('sync-clear');
+        if (clr) clr.addEventListener('click', function () { setToken(''); wrap.remove(); toast('Token removed.'); });
+        document.getElementById('sync-close').addEventListener('click', function () { wrap.remove(); });
+    }
+
+    function injectButton() {
+        if (document.getElementById('sync-fab')) return;
+        var b = document.createElement('button');
+        b.id = 'sync-fab';
+        b.title = 'Sync settings';
+        b.textContent = 'Sync';
+        b.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:99998;background:#263928;color:#faf7f0;' +
+            'border:none;border-radius:20px;padding:9px 16px;font-family:Georgia,serif;font-size:13px;' +
+            'cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,0.25);opacity:0.85;';
+        b.addEventListener('click', openSettings);
+        document.body.appendChild(b);
+    }
+
+    function wire() {
+        injectButton();
+        var form = document.getElementById('healthForm');
+        if (form) {
+            form.addEventListener('submit', function () {
+                if (!getToken()) return;
+                setTimeout(function () {
+                    push().then(function () { toast('Synced to GitHub'); })
+                          .catch(function (e) { toast('Sync failed: ' + e.message); });
+                }, 350);
+            });
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', wire);
+    } else {
+        wire();
+    }
+})();
+</script>
+"""
+
+
 def main():
     passphrase = PASSPHRASE_FILE.read_text().strip()
     html = SOURCE.read_text()
@@ -230,7 +405,7 @@ def main():
     idx = html.rfind("</body>")
     if idx == -1:
         raise SystemExit("No </body> tag found")
-    html = html[:idx] + UNLOCK_SCRIPT + html[idx:]
+    html = html[:idx] + UNLOCK_SCRIPT + SYNC_SCRIPT + html[idx:]
 
     OUTPUT.write_text(html)
     print(f"Wrote {OUTPUT.name} ({OUTPUT.stat().st_size / 1024:.0f} KB), "
