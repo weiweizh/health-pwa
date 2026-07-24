@@ -249,14 +249,9 @@ SYNC_SCRIPT = """
         return encryptEntries(getEntries(), pass).then(function (blob) {
             var content = utf8ToB64(JSON.stringify(blob));
             var url = 'https://api.github.com/repos/' + REPO + '/contents/' + ENC_PATH;
-            return fetch(url + '?ref=' + BRANCH, { headers: ghHeaders(token) })
-                .then(function (r) { return r.status === 200 ? r.json().then(function (j) { return j.sha; }) : null; })
-                .then(function (sha) {
-                    var body = { message: 'Update health data ' + new Date().toISOString(),
-                                 content: content, branch: BRANCH };
-                    if (sha) body.sha = sha;
-                    return fetch(url, { method: 'PUT', headers: ghHeaders(token), body: JSON.stringify(body) });
-                })
+            var body = { message: 'Update health data ' + new Date().toISOString(),
+                         content: content, branch: BRANCH };
+            return fetch(url, { method: 'PUT', headers: ghHeaders(token), body: JSON.stringify(body) })
                 .then(function (r) {
                     if (!r.ok) return r.json().then(function (e) { throw new Error(e.message || ('HTTP ' + r.status)); });
                     return r.json();
